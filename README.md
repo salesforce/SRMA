@@ -9,6 +9,7 @@ This is the repo for paper 'Improving Contrastive Learning via Model Augmentatio
 Therefore, we proposed three type of model augmentation methods: `neuron masking`, `layer dropping` and `encoder complementing`.
 
 ### Framework
+<img src="./img/framework.png" width="300">
 
 ## Reference
 If you use our code or follow our work, please cite as follows:
@@ -69,7 +70,7 @@ for slice in cl_output_slice:
     cl_loss += en_weight*self.cf_criterion(slice, ori_sequence_flatten)
 
 ```
-encoder is from the pretrained encoder. original is the item sequence before data augmentation. We add the contrastive loss from two branches. 
+`encoder` is from the pretrained encoder. `original` is the item sequence before data augmentation. We add the contrastive loss from two branches. 
 
 ## Acknowledgement
 We reuse part of code from our previous work [CoSeRec](https://github.com/YChen1993/CoSeRec).
