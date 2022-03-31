@@ -9,7 +9,7 @@ This is the repo for paper 'Improving Contrastive Learning via Model Augmentatio
 Therefore, we proposed three type of model augmentation methods: `neuron masking`, `layer dropping` and `encoder complementing`.
 
 ### Framework
-<img src="./img/framework.png" width="300">
+<img src="./img/framework.png" width="800">
 
 ## Reference
 If you use our code or follow our work, please cite as follows:
