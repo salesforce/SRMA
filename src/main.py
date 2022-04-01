@@ -27,8 +27,8 @@ def show_args_info(args):
 def main():
     parser = argparse.ArgumentParser(allow_abbrev=False)
     #system args
-    parser.add_argument('--data_dir', default='./data/', type=str)
-    parser.add_argument('--output_dir', default='./output/', type=str)
+    parser.add_argument('--data_dir', default='../data/', type=str)
+    parser.add_argument('--output_dir', default='../output/', type=str)
     parser.add_argument('--data_name', default='Sports_and_Outdoors', type=str)
     parser.add_argument('--do_eval', action='store_true')
     
@@ -76,10 +76,10 @@ def main():
     parser.add_argument("--layer_drop_thres", type=float, default=-1, help="probabilty for layer drop")
     parser.add_argument("--rec_model_aug", action='store_true')
     parser.add_argument("--model_aug_in_batch", default='same', type=str, \
-                        help='the model augmentation methods adopted in batch, [same, distinct]')
+                        help='the model augmentation methods adopted in batch, [same, distinct, sasrec-static]')
     # the pretrain encoder
     parser.add_argument("--use_pretrain", action='store_true',help='whehter using the pretrain model')
-    parser.add_argument("--pretrain_dir", default="./pretrain/", type=str, help='the directory for pretrained models.')
+    parser.add_argument("--pretrain_dir", default="../pretrain/", type=str, help='the directory for pretrained models.')
     parser.add_argument("--pretrain_label", default='best', type=str, help='the name for loading the pre-trained encoder in CL.')
     
     # change the probability to random augmentations
@@ -169,17 +169,17 @@ def main():
         model = SASRecModel(args=args)
     
     # the cl encoder model complementing.
+    pretrain_str = f'{args.model_name}-{args.data_name}-{args.pretrain_label}'
+    pretrain_model = pretrain_str+ '.pt'
+    path_pretrain_model = os.path.join(args.pretrain_dir, pretrain_model)
+    # instantiate the pretrain_encoder type. Can change to any other types
+    pretrain_encoder = SASRecModelAugment(args=args)
+        
     if args.use_pretrain:
-        pretrain_str = f'{args.model_name}-{args.data_name}-{args.pretrain_label}'
-        pretrain_model = pretrain_str+ '.pt'
-        path_pretrain_model = os.path.join(args.pretrain_dir, pretrain_model)
         print('-----loading pretrained model---------')
-        pretrain_encoder = SASRecModelAugment(args=args)
         pretrain_encoder.load_state_dict(torch.load(path_pretrain_model))
         print('loaded the pretrained model')
-
     trainer = SRMATrainer(model, pretrain_encoder, train_dataloader, eval_dataloader, test_dataloader, args)
-
 
     if args.do_eval:
         trainer.load(args.checkpoint_path)

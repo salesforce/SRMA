@@ -406,7 +406,7 @@ class EncoderAug(nn.Module):
         for idx, layer_module in enumerate(self.layer):
             hidden_states = layer_module(hidden_states, attention_mask)
             if output_all_encoded_layers:
-                all_encoder_lzayers.append(hidden_states)
+                all_encoder_layers.append(hidden_states)
         if not output_all_encoded_layers:
             all_encoder_layers.append(hidden_states)
         # add the augmented layers
