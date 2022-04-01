@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from datasets import RecWithContrastiveLearningDataset
 
 from trainers import CoSeRecTrainer, SRMATrainer
-from models import SASRecModel, SASRecModelAugment, OfflineItemSimilarity, OnlineItemSimilarity
+from models import SASRecModel, SASRecModelAugment
 from utils import EarlyStopping, get_user_seqs, get_item2attribute_json, check_path, set_seed
 
 def show_args_info(args):
@@ -46,36 +46,12 @@ def main():
                         For sequence length < augment_threshold: Insert, and Substitute methods are allowed \
                         For sequence length > augment_threshold: Crop, Reorder, Substitute, and Mask \
                         are allowed.")
-    parser.add_argument('--similarity_model_name', default='ItemCF_IUF', type=str, \
-                        help="Method to generate item similarity score. choices: \
-                        Random, ItemCF, ItemCF_IUF(Inverse user frequency), Item2Vec, LightGCN")
-    parser.add_argument("--augmentation_warm_up_epoches", type=float, default=160, \
-                        help="number of epochs to switch from \
-                        memory-based similarity model to \
-                        hybrid similarity model.")
     parser.add_argument('--base_augment_type', default='random', type=str, \
                         help="default data augmentation types. Chosen from: \
-                        {mask, crop, reorder, substitute, insert, short_insert, identity, random, cl4srec \
-                        combinatorial_enumerate (for multi-view)}.")
-    parser.add_argument('--augment_type_for_short', default='SIM', type=str, \
-                        help="data augmentation types for short sequences. Chosen from: \
-                        SI, SIM, SIR, SIC, SIMR, SIMC, SIRC, SIMRC.")
+                        {mask, crop, reorder, identity, random")
     parser.add_argument("--tao", type=float, default=0.2, help="crop ratio for crop operator")
     parser.add_argument("--gamma", type=float, default=0.7, help="mask ratio for mask operator")
     parser.add_argument("--beta", type=float, default=0.2, help="reorder ratio for reorder operator") 
-    parser.add_argument("--substitute_rate", type=float, default=0.1, \
-                        help="substitute ratio for substitute operator")
-    parser.add_argument("--insert_rate", type=float, default=0.4, \
-                        help="insert ratio for insert operator")
-
-    parser.add_argument("--insert_num", type=int, default=10, \
-                        help="the number of items to insert")
-    parser.add_argument("--max_insert_num_per_pos", type=int, default=1, \
-                        help="maximum insert items per position for insert operator - not studied")
-    parser.add_argument("--insert_type", default='threshold', type=str, \
-                        help="insert type for short sequence insertion. [threshold, iteration]")
-    parser.add_argument("--insert_threshold", default=10, type=int, \
-                        help="the number of items in a sequence after insertion")
 
     ## contrastive learning task args
     parser.add_argument('--temperature', default= 1.0, type=float,
@@ -168,19 +144,7 @@ def main():
     checkpoint = args_str + '.pt'
     args.checkpoint_path = os.path.join(args.output_dir, checkpoint)
 
-    # -----------   pre-computation for item similarity   ------------ #
-    args.similarity_model_path = os.path.join(args.data_dir,\
-                            args.data_name+'_'+args.similarity_model_name+'_similarity.pkl')
 
-    offline_similarity_model = OfflineItemSimilarity(data_file=args.data_file,
-                            similarity_path=args.similarity_model_path,
-                            model_name=args.similarity_model_name,
-                            dataset_name=args.data_name)
-    args.offline_similarity_model = offline_similarity_model
-
-    # -----------   online based on shared item embedding for item similarity --------- #
-    online_similarity_model = OnlineItemSimilarity(item_size=args.item_size)
-    args.online_similarity_model = online_similarity_model
 
     # training data for node classification
     train_dataset = RecWithContrastiveLearningDataset(args, 

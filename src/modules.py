@@ -47,73 +47,6 @@ class NCELoss(nn.Module):
         return nce_loss
 
     # # nce loss implemented by: https://github.com/sthalles/SimCLR/blob/master/simclr.py
-    # # not converge, switched to above impl.
-    # def forward(self, batch_sample_one, batch_sample_two):
-    #     '''
-    #     features shape: n_views*batch_size x feature_dims
-    #     examples: [s1-a, s2-a, s3-a, s4-a, s1-b, s2-b, s3-b, s4-b]
-    #     '''
-    #     features = torch.cat([batch_sample_one, batch_sample_two], dim=0)
-    #     labels = torch.cat([torch.arange(features.shape[0])], dim=0)
-    #     labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
-    #     labels = labels.to(self.device)
-        
-    #     features = F.normalize(features, dim=1)
-
-    #     similarity_matrix = torch.matmul(features, features.T)
-    #     # assert similarity_matrix.shape == (
-    #     #     self.args.n_views * self.args.batch_size, self.args.n_views * self.args.batch_size)
-    #     # assert similarity_matrix.shape == labels.shape
-
-    #     # discard the main diagonal from both: labels and similarities matrix
-    #     mask = torch.eye(labels.shape[0], dtype=torch.bool).to(self.device)
-    #     labels = labels[~mask].view(labels.shape[0], -1)
-    #     similarity_matrix = similarity_matrix[~mask].view(similarity_matrix.shape[0], -1)
-    #     # assert similarity_matrix.shape == labels.shape
-
-    #     # select and combine multiple positives
-    #     positives = similarity_matrix[labels.bool()].view(labels.shape[0], -1)
-    #     # select only the negatives the negatives
-    #     negatives = similarity_matrix[~labels.bool()].view(similarity_matrix.shape[0], -1)
-    #     logits = torch.cat([positives, negatives], dim=1)
-    #     labels = torch.zeros(logits.shape[0], dtype=torch.long).to(self.device)
-    #     logits = logits / self.temperature
-    #     nce_loss = self.criterion(logits, labels)
-    #     return nce_loss
-class NTXent(nn.Module):
-    """
-    Contrastive loss with distributed data parallel support
-    code: https://github.com/AndrewAtanov/simclr-pytorch/blob/master/models/losses.py
-    """
-    LARGE_NUMBER = 1e9
-
-    def __init__(self, tau=1., gpu=None, multiplier=2, distributed=False):
-        super().__init__()
-        self.tau = tau
-        self.multiplier = multiplier
-        self.distributed = distributed
-        self.norm = 1.
-
-    def forward(self, batch_sample_one, batch_sample_two):
-        z = torch.cat([batch_sample_one, batch_sample_two], dim=0)
-        n = z.shape[0]
-        assert n % self.multiplier == 0
-
-        z = F.normalize(z, p=2, dim=1) / np.sqrt(self.tau)
-        logits = z @ z.t()
-        logits[np.arange(n), np.arange(n)] = -self.LARGE_NUMBER
-
-        logprob = F.log_softmax(logits, dim=1)
-
-        # choose all positive objects for an example, for i it would be (i + k * n/m), where k=0...(m-1)
-        m = self.multiplier
-        labels = (np.repeat(np.arange(n), m) + np.tile(np.arange(m) * n//m, n)) % n
-        # remove labels pointet to itself, i.e. (i, i)
-        labels = labels.reshape(n, m)[:, 1:].reshape(-1)
-
-        # TODO: maybe different terms for each process should only be computed here...
-        loss = -logprob[np.repeat(np.arange(n), m-1), labels].sum() / n / (m-1) / self.norm
-        return loss
 
 def gelu(x):
     """Implementation of the gelu activation function.
@@ -488,11 +421,6 @@ class EncoderDrop(nn.Module):
         layer = Layer(args)
         self.layer = nn.ModuleList([copy.deepcopy(layer)
                                     for _ in range(args.num_hidden_layers)])
-        # if args.layer_type == 'sigle_inter':
-        # self.dense_layers = nn.ModuleList(nn.Linear(args.hidden_size, 
-                                                    # args.hidden_size) for _ in range(args.num_augmented_layers))
-        # self.dense_layers = nn.ModuleList(InterLayer(args) for _ in range(args.num_augmented_layers))
-        # self.dense_layers = nn.ModuleList(Intermediate(args) for _ in range(args.num_augmented_layers))
         self.aug_layer_type = args.aug_layer_type
         if self.aug_layer_type == 'single':
             self.augment_layers = nn.ModuleList(SingleInterLayer(args) for _ in range(args.num_augmented_layers))
@@ -516,7 +444,6 @@ class EncoderDrop(nn.Module):
         # build the model augmentation from intermidate layers
         if isTrain: # drop layers during training
             drop_idx = random.sample(range(0, self.num_aug_layers), self.layer_drop_num)
-            # print('drop idx:',drop_idx)
             for idx, layer_module in enumerate(self.augment_layers):
                 if idx not in drop_idx:
                     if self.aug_layer_type in ['single','inter']:
@@ -531,5 +458,4 @@ class EncoderDrop(nn.Module):
                 elif self.aug_layer_type in ['sasrec']:
                     hidden_states = layer_module(hidden_states,attention_mask)
                 all_encoder_layers.append(hidden_states)
-        # print('current number of layers:', len(all_encoder_layers))
         return all_encoder_layers

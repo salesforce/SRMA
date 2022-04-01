@@ -13,8 +13,7 @@ import copy
 
 
 class RecWithContrastiveLearningDataset(Dataset):
-    def __init__(self, args, user_seq, test_neg_items=None, data_type='train', 
-                similarity_model_type='offline'):
+    def __init__(self, args, user_seq, test_neg_items=None, data_type='train'):
         self.args = args
         self.user_seq = user_seq
         self.test_neg_items = test_neg_items
@@ -22,49 +21,11 @@ class RecWithContrastiveLearningDataset(Dataset):
         self.max_len = args.max_seq_length
         # currently apply one transform, will extend to multiples
         # it takes one sequence of items as input, and apply augmentation operation to get another sequence
-        print('similarity model type:', similarity_model_type)
-        if similarity_model_type=='offline':
-            self.similarity_model = args.offline_similarity_model
-        elif similarity_model_type=='online':
-            self.similarity_model = args.online_similarity_model
-        elif similarity_model_type=='hybrid':
-            self.similarity_model = [args.offline_similarity_model, args.online_similarity_model]
-        print("Similarity Model Type:", similarity_model_type)
         self.augmentations = {'crop': Crop(tao=args.tao),
                               'mask': Mask(gamma=args.gamma),
                               'reorder': Reorder(beta=args.beta),
-                              'substitute': Substitute(self.similarity_model,
-                                                substitute_rate=args.substitute_rate),
-                              'insert': Insert(self.similarity_model, 
-                                               insert_rate=args.insert_rate,
-                                               max_insert_num_per_pos=args.max_insert_num_per_pos),
                               'identity': Identity(), 
-                              'short_insert' : ShortInsert(self.similarity_model,
-                                                            insert_num=args.insert_num, 
-                                                            max_insert_num_per_pos=args.max_insert_num_per_pos,
-                                                            insert_threshold=args.insert_threshold,
-                                                            insert_type=args.insert_type),
-                              'cl4srec' : CL4SRec(tao=args.tao,gamma=args.gamma, beta=args.beta),
-                              'random': Random(tao=args.tao, gamma=args.gamma, 
-                                                beta=args.beta, item_similarity_model=self.similarity_model,
-                                                insert_rate=args.insert_rate, 
-                                                max_insert_num_per_pos=args.max_insert_num_per_pos,
-                                                substitute_rate=args.substitute_rate,
-                                                augment_threshold=self.args.augment_threshold,
-                                                augment_type_for_short=self.args.augment_type_for_short),
-                              'short_random': ShortRandom(tao=args.tao, gamma=args.gamma, beta=args.beta, 
-                                                    item_similarity_model=self.similarity_model, 
-                                                    substitute_rate=args.substitute_rate,
-                                                    augment_threshold=self.args.augment_threshold, 
-                                                    augment_type_for_short=self.args.augment_type_for_short,
-                                                    insert_num=args.insert_num,  
-                                                    max_insert_num_per_pos=args.max_insert_num_per_pos,
-                                                    insert_threshold=args.insert_threshold, insert_type=args.insert_type),
-                              'combinatorial_enumerate': CombinatorialEnumerate(tao=args.tao, gamma=args.gamma, 
-                                                beta=args.beta, item_similarity_model=self.similarity_model,
-                                                insert_rate=args.insert_rate, 
-                                                max_insert_num_per_pos=args.max_insert_num_per_pos,
-                                                substitute_rate=args.substitute_rate, n_views=args.n_views)
+                              'random' : Random(tao=args.tao,gamma=args.gamma, beta=args.beta),
                             }
         if self.args.base_augment_type not in self.augmentations:
             raise ValueError(f"augmentation type: '{self.args.base_augment_type}' is invalided")
@@ -197,96 +158,6 @@ class RecWithContrastiveLearningDataset(Dataset):
         '''
         consider n_view of a single sequence as one sample
         '''
-        return len(self.user_seq)
-
-class SASRecDataset(Dataset):
-
-    def __init__(self, args, user_seq, test_neg_items=None, data_type='train'):
-        self.args = args
-        self.user_seq = user_seq
-        self.test_neg_items = test_neg_items
-        self.data_type = data_type
-        self.max_len = args.max_seq_length
-
-    def _data_sample_rec_task(self, user_id, items, input_ids, target_pos, answer):
-        # make a deep copy to avoid original sequence be modified
-        copied_input_ids = copy.deepcopy(input_ids)
-        target_neg = []
-        seq_set = set(items)
-        for _ in input_ids:
-            target_neg.append(neg_sample(seq_set, self.args.item_size))
-
-        pad_len = self.max_len - len(input_ids)
-        input_ids = [0] * pad_len + input_ids
-        target_pos = [0] * pad_len + target_pos
-        target_neg = [0] * pad_len + target_neg
-
-        input_ids = input_ids[-self.max_len:]
-        target_pos = target_pos[-self.max_len:]
-        target_neg = target_neg[-self.max_len:]
-
-        assert len(input_ids) == self.max_len
-        assert len(target_pos) == self.max_len
-        assert len(target_neg) == self.max_len
-
-        if self.test_neg_items is not None:
-            test_samples = self.test_neg_items[index]
-
-            cur_rec_tensors = (
-                torch.tensor(user_id, dtype=torch.long), # user_id for testing
-                torch.tensor(input_ids, dtype=torch.long),
-                torch.tensor(target_pos, dtype=torch.long),
-                torch.tensor(target_neg, dtype=torch.long),
-                torch.tensor(answer, dtype=torch.long),
-                torch.tensor(test_samples, dtype=torch.long),
-            )
-        else:
-            cur_rec_tensors = (
-                torch.tensor(user_id, dtype=torch.long),  # user_id for testing
-                torch.tensor(input_ids, dtype=torch.long),
-                torch.tensor(target_pos, dtype=torch.long),
-                torch.tensor(target_neg, dtype=torch.long),
-                torch.tensor(answer, dtype=torch.long),
-            )
-
-        return cur_rec_tensors
-
-    def __getitem__(self, index):
-
-        user_id = index
-        items = self.user_seq[index]
-
-        assert self.data_type in {"train", "valid", "test"}
-
-        # [0, 1, 2, 3, 4, 5, 6]
-        # train [0, 1, 2, 3]
-        # target [1, 2, 3, 4]
-
-        # valid [0, 1, 2, 3, 4]
-        # answer [5]
-
-        # test [0, 1, 2, 3, 4, 5]
-        # answer [6]
-        if self.data_type == "train":
-            input_ids = items[:-3]
-            target_pos = items[1:-2]
-            answer = [0] # no use
-
-        elif self.data_type == 'valid':
-            input_ids = items[:-2]
-            target_pos = items[1:-1]
-            answer = [items[-2]]
-
-        else:
-            input_ids = items[:-1]
-            target_pos = items[1:]
-            answer = [items[-1]]
-
-
-        return self._data_sample_rec_task(user_id, items, input_ids, \
-                                            target_pos, answer)
-
-    def __len__(self):
         return len(self.user_seq)
 
 if __name__ == '__main__':

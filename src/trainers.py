@@ -15,7 +15,7 @@ from torch.optim import Adam
 
 from torch.utils.data import DataLoader, RandomSampler
 from datasets import RecWithContrastiveLearningDataset
-from modules import NCELoss, NTXent
+from modules import NCELoss
 from utils import recall_at_k, ndcg_k, get_metric, get_user_seqs, nCr
 
 class Trainer:
@@ -29,30 +29,18 @@ class Trainer:
         self.device = torch.device("cuda" if self.cuda_condition else "cpu")
 
         self.model = model
-        self.online_similarity_model = args.online_similarity_model
 
         self.total_augmentaion_pairs = nCr(self.args.n_views, 2)
-        #projection head for contrastive learn task
-        # self.projection = nn.Sequential(nn.Linear(self.args.max_seq_length*self.args.hidden_size, \
-        #                                 512, bias=False), nn.BatchNorm1d(512), nn.ReLU(inplace=True), 
-        #                                 nn.Linear(512, self.args.hidden_size, bias=True))
         if self.cuda_condition:
             self.model.cuda()
-            # self.projection.cuda()
         # Setting the train and test data loader
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
         self.test_dataloader = test_dataloader
-        # self.projection_header = None
-        
-        # self.data_name = self.args.data_name
         betas = (self.args.adam_beta1, self.args.adam_beta2)
         self.optim = Adam(self.model.parameters(), lr=self.args.lr, betas=betas, weight_decay=self.args.weight_decay)
-        
         print("Total Parameters:", sum([p.nelement() for p in self.model.parameters()]))
-
         self.cf_criterion = NCELoss(self.args.temperature, self.device)
-        # self.cf_criterion = NTXent()
         print("self.cf_criterion:", self.cf_criterion.__class__.__name__)
         
     def __refresh_training_dataset(self, item_embeddings):
@@ -60,10 +48,8 @@ class Trainer:
         use for updating item embedding
         """
         user_seq, _, _, _ = get_user_seqs(self.args.data_file)
-        self.args.online_similarity_model.update_embedding_matrix(item_embeddings)
         # training data for node classification
-        train_dataset = RecWithContrastiveLearningDataset(self.args, user_seq, 
-                                        data_type='train', similarity_model_type='hybrid')
+        train_dataset = RecWithContrastiveLearningDataset(self.args, user_seq, data_type='train')
         train_sampler = RandomSampler(train_dataset)
         train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=self.args.batch_size)
         return train_dataloader
@@ -180,16 +166,12 @@ class SRMATrainer(Trainer):
         inputs: [batch1_augmented_data, batch2_augmentated_data]
         '''
         cl_batch = torch.cat(inputs, dim=0)
-        # print("contrastive learning batches:",  cl_batch.shape)
         cl_batch = cl_batch.to(self.device)
-        # cl_sequence_output = self.model.transformer_encoder(cl_batch,isTrain=True)
         if self.args.model_augmentation:
             cl_sequence_output = self.model.transformer_encoder(cl_batch,isTrain=True)
         else:
             cl_sequence_output = self.model.transformer_encoder(cl_batch)
-        # cf_sequence_output = cf_sequence_output[:, -1, :]
         cl_sequence_flatten = cl_sequence_output.view(cl_batch.shape[0], -1)
-        # cf_output = self.projection(cf_sequence_flatten)
         batch_size = cl_batch.shape[0]//2
         cl_output_slice = torch.split(cl_sequence_flatten, batch_size)
         cl_loss = self.cf_criterion(cl_output_slice[0], 
@@ -206,7 +188,6 @@ class SRMATrainer(Trainer):
             cl_sequence_embedding = self.model.transformer_encoder(cl_batch, isTrain=True)
             cl_sequence_flatten = cl_sequence_embedding.view(cl_batch.shape[0], -1)
             cl_sequence_outout.append(cl_sequence_flatten)
-            # print('cl_sequence_flatten:', cl_sequence_flatten.shape)
         cl_loss = self.cf_criterion(cl_sequence_outout[0], cl_sequence_outout[1])
         return cl_loss
     
@@ -236,8 +217,6 @@ class SRMATrainer(Trainer):
             cl_loss += en_weight*self.cf_criterion(slice, ori_sequence_flatten)
         return cl_loss
             
-
-
     def iteration(self, epoch, dataloader, full_sort=True, train=True):
 
         str_code = "train" if train else "test"
