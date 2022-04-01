@@ -37,7 +37,7 @@ We include the information of dataset in `./data/`.
 cd ./src/
 ```
 1. run with ```python main.py --data_name Sports_and_Outdoors --gpu_id 0 --batch_size 256 --hidden_dropout_prob 0.5 --num_augmented_layers 2 --layer_drop_num 1 --model_aug_in_batch "same" ``` This step will pretrain an encoder, which is saved in `./output/`
-2. Move the encoder to `./pretrain/`
+2. Move the encoder to `./pretrain/` and change the number to 'best'. We provide an example for Sports dataset. 
 3. run with ```python main.py --data_name Sports_and_Outdoors --gpu_id 0 --batch_size 256  --model_augmentation  --hidden_dropout_prob 0.5 --num_augmented_layers 2 --layer_drop_num 1 --use_pretrain --en_weight 0.5 --rec_model_aug```
 
 ### arguments explanation
